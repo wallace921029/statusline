@@ -1,6 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.gemini/antigravity-cli/statusline.sh"
+    "command": "~/.gemini/antigravity-cli/statusline.sh"  // for macos and linux
+    // "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\youzh\\.gemini\\antigravity-cli\\statusline.ps1"  // for powershell
   }
 }
