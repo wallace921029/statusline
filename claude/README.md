@@ -1,8 +1,9 @@
 ## Preview
 
-Sonnet 5 | effort: high | ctx: 3%  
-5h: 0% (resets Wed 10:20PM)  
-7d: 6% (resets Sat Aug 08 06:00AM)   
+Sonnet 5.5  ·  high  ·  ⎇ no git  ·  25 tok/s  ·  +110 −31  
+ctx ••••••••••••••••   10%   103k/1.0M   cache 98%  
+5h  ━━━━━━━━━━━━━━━━    4%   resets in 4h 30m  
+7d  ━━━━━━━━━━━━━━━━    1%   resets in 1d 15h  
 
 ## Official Docs
 
