@@ -5,6 +5,8 @@ ctx ••••••••••••••••   10%   103k/1.0M   cache 9
 5h  ━━━━━━━━━━━━━━━━    4%   resets in 4h 30m  
 7d  ━━━━━━━━━━━━━━━━    1%   resets in 1d 15h  
 
+![./image.png](./image.png)
+
 ## Official Docs
 
 https://code.claude.com/docs/en/statusline
