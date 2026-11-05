@@ -6,6 +6,8 @@ argon 7d ━━━━━━━━━━━━━━━━   12%   resets in 6d 1
 gem   5h ━━━━━━━━━━━━━━━━    0%   resets in 4h 59m  ·  7d ━━━━━━━━━━━━━━━━    0%   resets in 6d 0h  
 3p    5h ━━━━━━━━━━━━━━━━    0%   resets in 4h 59m  ·  7d ━━━━━━━━━━━━━━━━    0%   resets in 6d 23  
 
+![](./image.png)  
+
 ## Official Docs
 
 https://antigravity.google/docs/cli/commands/statusline#configure-a-custom-command
