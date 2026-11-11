@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Antigravity CLI (agy) status line (5 aligned lines, truecolor, trans flag palette):
-#   Gemini 4 Argon  ·  high  ·  ⎇ main  ·  70 tok/s
-#   ctx       ••░░░░░░░░░░░░░░   12%   117k/1.0M   cache 98%
-#   argon 7d  ━━░░░░░░░░░░░░░░   11%   resets in 6d 19h
-#   gem   5h  ░░░░░░░░░░░░░░░░    0%   resets in 4h 57m   ·   7d  ░░░░░░░░░░░░░░░░    0%   resets in 6d 0h
-#   3p    5h  ░░░░░░░░░░░░░░░░    0%   resets in 4h 57m   ·   7d  ░░░░░░░░░░░░░░░░    0%   resets in 6d 23h
+#   Gemini 4 Argon | high | 70 tok/s | ⎇ main | +12 -3
+#   ctx       •••••••••• 12% 117k/1.0M | cache 98%
+#   argon 7d  ━━━━━━━━━━ 11% 6d 19h (Wed 14:00)
+#   gem   5h  ━━━━━━━━━━ 0% 4h 57min (18:59) | 7d ━━━━━━━━━━ 0% 6d 0h (Tue 11:14)
+#   3p    5h  ━━━━━━━━━━ 0% 4h 57min (18:59) | 7d ━━━━━━━━━━ 0% 6d 23h (Wed 13:59)
 
+export LC_TIME=C
+export LC_NUMERIC=C
 input=$(cat)
 
 # ---------- palette (truecolor) ----------
@@ -21,9 +23,11 @@ C_TEXT=$DIM
 C_MODEL=$C_PINK
 C_BRANCH=$C_BLUE
 C_SPEED=$C_BLUE
+C_ADD=$(fg 120 215 140)      # soft green for git additions
+C_DEL=$(fg 245 130 140)      # soft red for git deletions
 # quota level colors: <60% blue, 60-89% pink, >=90% white
 C_OK=$C_BLUE; C_WARN=$C_PINK; C_BAD=$C_WHITE
-SEP="${C_LABEL}  ·  ${RST}"
+SEP="${C_LABEL} | ${RST}"
 
 level_color() {  # $1 = integer percent
   if   [ "$1" -ge 90 ]; then printf '%s' "$C_BAD"
@@ -43,16 +47,6 @@ grad() {
   fg "$r" "$g" "$b"
 }
 
-rel_sec() {  # seconds remaining -> "6d 19h" / "4h 57m" / "12m"
-  [ -z "$1" ] || [ "$1" = "null" ] && return
-  local s=${1%.*} d h m
-  [ "${s:-0}" -le 0 ] && { printf 'now'; return; }
-  d=$((s/86400)); h=$((s%86400/3600)); m=$((s%3600/60))
-  if   [ "$d" -gt 0 ]; then printf '%dd %dh' "$d" "$h"
-  elif [ "$h" -gt 0 ]; then printf '%dh %dm' "$h" "$m"
-  else                      printf '%dm' "$m"; fi
-}
-
 human() {  # 6123 -> 6k, 1048576 -> 1.0M
   local n=${1:-0}
   if   [ "$n" -ge 1000000 ]; then LC_NUMERIC=C awk -v n="$n" 'BEGIN{printf "%.1fM", n/1000000}'
@@ -60,9 +54,9 @@ human() {  # 6123 -> 6k, 1048576 -> 1.0M
   else printf '%d' "$n"; fi
 }
 
-# ctx row: 9-char prefix ("ctx      ") + 16-dot gradient bar
+# ctx row: 9-char prefix ("ctx      ") + 10-dot gradient bar (1 dot = 10%)
 ctx_row() {
-  local pct=$1 suffix=$2 width=16 filled i col out=""
+  local pct=$1 suffix=$2 width=10 filled i col out=""
   printf '%s%-9s%s' "$C_LABEL" "ctx" "$RST"
   if [ -z "$pct" ] || [ "$pct" = "null" ]; then printf '%sn/a%s' "$C_LABEL" "$RST"; return; fi
   pct=$(LC_NUMERIC=C printf '%.0f' "$pct")
@@ -71,16 +65,16 @@ ctx_row() {
     if [ "$i" -lt "$filled" ]; then col=$(grad "$i" "$width"); out+="${col}•"; else out+="${C_TRACK}•"; fi
   done
   col=$(grad $(( filled > 0 ? filled - 1 : 0 )) "$width")
-  printf '%s%s %s%s%4s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
-  [ -n "$suffix" ] && printf '   %s%s%s' "$C_LABEL" "$suffix" "$RST"
+  printf '%s%s %s%s%s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
+  [ -n "$suffix" ] && printf ' %s%s%s' "$C_LABEL" "$suffix" "$RST"
 }
 
-# quota segment: <prefix_label> <used_pct> <reset_seconds> <pad_reset>
+# quota segment: <prefix_label> <used_pct> <rstr> (width=10, 1 cell = 10%)
 quota_seg() {
-  local label=$1 pct=$2 rsec=$3 pad=${4:-0} width=16 filled i col out="" rstr
+  local label=$1 pct=$2 rstr=$3 width=10 filled i col out=""
   printf '%s%s%s' "$C_LABEL" "$label" "$RST"
   if [ -z "$pct" ] || [ "$pct" = "null" ]; then
-    printf '%s%-22s%s' "$C_LABEL" "n/a" "$RST"
+    printf '%sn/a%s' "$C_LABEL" "$RST"
     return
   fi
   pct=$(LC_NUMERIC=C printf '%.0f' "$pct")
@@ -91,17 +85,8 @@ quota_seg() {
   for ((i=0; i<width; i++)); do
     if [ "$i" -lt "$filled" ]; then out+="${col}━"; else out+="${C_TRACK}━"; fi
   done
-  rstr=$(rel_sec "$rsec")
-  printf '%s%s %s%s%4s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
-  if [ -n "$rstr" ]; then
-    if [ "$pad" -eq 1 ]; then
-      printf '   %sresets in %-6s%s' "$C_LABEL" "$rstr" "$RST"
-    else
-      printf '   %sresets in %s%s' "$C_LABEL" "$rstr" "$RST"
-    fi
-  elif [ "$pad" -eq 1 ]; then
-    printf '   %-16s' ""
-  fi
+  printf '%s%s %s%s%s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
+  [ -n "$rstr" ] && printf ' %s%s%s' "$C_LABEL" "$rstr" "$RST"
 }
 
 # ---------- single-pass jq extraction ----------
@@ -111,11 +96,26 @@ eval "$(
       if b == null or b.remaining_fraction == null then ""
       else ((1 - b.remaining_fraction) * 100 | if . < 0 then 0 elif . > 100 then 100 else . end | tostring)
       end;
-    def rsec(b):
+    def fmt_rst(b; is_7d):
       if b == null then ""
-      elif b.reset_in_seconds != null then (b.reset_in_seconds | tostring)
-      elif b.reset_time != null then (((b.reset_time | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - now) | floor | tostring)
-      else ""
+      else
+        (if b.reset_in_seconds != null then b.reset_in_seconds
+         elif b.reset_time != null then (((b.reset_time | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - now) | floor)
+         else null end) as $s |
+        if $s == null then ""
+        elif $s <= 0 then "now"
+        else
+          ($s / 86400 | floor) as $d |
+          (($s % 86400) / 3600 | floor) as $h |
+          (($s % 3600) / 60 | floor) as $m |
+          (if is_7d then
+             (if $d > 0 then "\($d)d \($h)h" elif $h > 0 then "\($h)h \($m)min" elif $s < 60 then "<1min" else "\($m)min" end) +
+             " (" + ((now + $s) | strflocaltime("%a %H:%M")) + ")"
+           else
+             (if $h > 0 then "\($h)h \($m)min" elif $s < 60 then "<1min" else "\($m)min" end) +
+             " (" + ((now + $s) | strflocaltime("%H:%M")) + ")"
+           end)
+        end
       end;
     (.quota["gemini-argon-wtu-weekly"] // (.quota // {} | to_entries | map(select(.key | test("argon"))) | first | .value)) as $argon |
     @sh "
@@ -135,15 +135,15 @@ eval "$(
       tasks=\(.task_count // 0)
       sub_running=\([.subagents // [] | .[] | select(.status == "running")] | length)
       gem5_pct=\(used_pct(.quota["gemini-5h"]))
-      gem5_rst=\(rsec(.quota["gemini-5h"]))
+      gem5_rst=\(fmt_rst(.quota["gemini-5h"]; false))
       gem7_pct=\(used_pct(.quota["gemini-weekly"]))
-      gem7_rst=\(rsec(.quota["gemini-weekly"]))
+      gem7_rst=\(fmt_rst(.quota["gemini-weekly"]; true))
       arg7_pct=\(used_pct($argon))
-      arg7_rst=\(rsec($argon))
+      arg7_rst=\(fmt_rst($argon; true))
       tp5_pct=\(used_pct(.quota["3p-5h"]))
-      tp5_rst=\(rsec(.quota["3p-5h"]))
+      tp5_rst=\(fmt_rst(.quota["3p-5h"]; false))
       tp7_pct=\(used_pct(.quota["3p-weekly"]))
-      tp7_rst=\(rsec(.quota["3p-weekly"]))
+      tp7_rst=\(fmt_rst(.quota["3p-weekly"]; true))
     "
   ' 2>/dev/null
 )"
@@ -159,6 +159,18 @@ fi
 branch="$vcs_branch"
 if [ -z "$branch" ] && [ -n "$cwd" ]; then
   branch=$(git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || git -C "$cwd" rev-parse --short HEAD 2>/dev/null || true)
+fi
+
+# Git diff stats (+added -deleted)
+git_diff=""
+if [ -n "$branch" ] && [ -n "$cwd" ]; then
+  diff_stat=$(git -C "$cwd" diff HEAD --numstat 2>/dev/null || git -C "$cwd" diff --cached --numstat 2>/dev/null || git -C "$cwd" diff --numstat 2>/dev/null || true)
+  read -r added removed < <(echo "$diff_stat" | awk '{a+=$1; r+=$2} END {print a+0, r+0}')
+  added=${added:-0}
+  removed=${removed:-0}
+  c_add="$DIM"; [ "$added" -gt 0 ] && c_add="$C_ADD"
+  c_del="$DIM"; [ "$removed" -gt 0 ] && c_del="$C_DEL"
+  git_diff="${c_add}+${added}${RST} ${c_del}-${removed}${RST}"
 fi
 
 # ---------- real tok/s from agy transcript.jsonl ----------
@@ -195,8 +207,9 @@ fi
 # ---------- line 1: header ----------
 l1="${C_MODEL}${BOLD}${model}${RST}"
 [ -n "$effort" ] && l1+="${SEP}${C_TEXT}${effort}${RST}"
-l1+="${SEP}${C_BRANCH}⎇ ${branch:-no git}${RST}"
 [ -n "$tps" ] && l1+="${SEP}${C_SPEED}${tps} tok/s${RST}"
+l1+="${SEP}${C_BRANCH}⎇ ${branch:-no git}${RST}"
+[ -n "$git_diff" ] && l1+="${SEP}${git_diff}"
 [ -n "$cycle_mode" ] && l1+="${SEP}${C_TEXT}${cycle_mode}${RST}"
 if [ "${sub_running:-0}" -gt 0 ]; then
   l1+="${SEP}${C_BLUE}${sub_running} sub${RST}"
@@ -206,8 +219,6 @@ if [ "${tasks:-0}" -gt 0 ]; then
 fi
 if [ "$confirm" = "true" ]; then
   l1+="${SEP}${C_PINK}${BOLD}⚠ confirm${RST}"
-elif [ "$state" != "idle" ] && [ -n "$state" ]; then
-  l1+="${SEP}${C_TEXT}${state}${RST}"
 fi
 
 # ---------- line 2: ctx ----------
@@ -220,23 +231,24 @@ fi
 if [ $(( cur_in + cur_cache )) -gt 0 ]; then
   hp=$(( (cur_cache * 100 + (cur_in + cur_cache) / 2) / (cur_in + cur_cache) ))
   if   [ "$hp" -ge 80 ]; then hc=$C_OK; elif [ "$hp" -ge 50 ]; then hc=$C_WARN; else hc=$C_BAD; fi
-  ctx_extra+="   ${RST}${C_LABEL}cache ${hc}${hp}%${RST}"
+  [ -n "$ctx_extra" ] && ctx_extra+="${RST}${SEP}"
+  ctx_extra+="${C_LABEL}cache ${hc}${hp}%${RST}"
 fi
 l2=$(ctx_row "$ctx" "$ctx_extra")
 
 # ---------- line 3: argon (7d standalone row above gem) ----------
-l3=$(quota_seg "argon 7d " "$arg7_pct" "$arg7_rst" 0)
+l3=$(quota_seg "argon 7d " "$arg7_pct" "$arg7_rst")
 
 # ---------- line 4: gem (5h + 7d) ----------
 l4=$(printf '%s%s%s' \
-  "$(quota_seg "gem   5h " "$gem5_pct" "$gem5_rst" 1)" \
+  "$(quota_seg "gem   5h " "$gem5_pct" "$gem5_rst")" \
   "$SEP" \
-  "$(quota_seg "7d " "$gem7_pct" "$gem7_rst" 0)")
+  "$(quota_seg "7d " "$gem7_pct" "$gem7_rst")")
 
 # ---------- line 5: 3p (5h + 7d) ----------
 l5=$(printf '%s%s%s' \
-  "$(quota_seg "3p    5h " "$tp5_pct" "$tp5_rst" 1)" \
+  "$(quota_seg "3p    5h " "$tp5_pct" "$tp5_rst")" \
   "$SEP" \
-  "$(quota_seg "7d " "$tp7_pct" "$tp7_rst" 0)")
+  "$(quota_seg "7d " "$tp7_pct" "$tp7_rst")")
 
 printf '%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5"
