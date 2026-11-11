@@ -1,6 +1,6 @@
 ## Preview
 
-![./image.png](./claude/Screenshot From 2026-11-11 11-22-27.png)
+![./image.png](./claude/preview.png)
 
 ## Official Docs
 
