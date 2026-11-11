@@ -1,6 +1,6 @@
 ## Preview
 
-![./image.png](./claude/preview.png)
+![./image.png](./preview.png)
 
 ## Official Docs
 
