@@ -1,9 +1,9 @@
+
 #!/usr/bin/env bash
-# Claude Code status line (4 aligned lines, truecolor):
-#   ● Sonnet 5  ·  high  ·  main  ·  89 tok/s
-#   ctx  ████░░░░░░░░░░░░   3%
-#   5h   ████████████░░░░  75%   resets in 2h 13m
-#   7d   █░░░░░░░░░░░░░░░   6%   resets in 2d 5h
+# Claude Code status line (3 lines, truecolor):
+#   Sonnet 5 | high | 89 tok/s | ⎇ main
+#   ctx •••••••••• 3%
+#   5h ━━━━━━━━━━ 75% 2h 13m (14:30) | 7d ━━━━━━━━━━ 6% 2d 5h (Sat 14:30)
 input=$(cat)
 j() { echo "$input" | jq -r "$1" 2>/dev/null; }
 
@@ -22,7 +22,7 @@ C_BRANCH=$C_BLUE
 C_SPEED=$C_BLUE
 # 5h/7d level colors: <60% blue, 60-90% pink, >=90% white
 C_OK=$C_BLUE; C_WARN=$C_PINK; C_BAD=$C_WHITE
-SEP="${C_LABEL}  ·  ${RST}"
+SEP="${C_LABEL} | ${RST}"
 
 level_color() {  # $1 = integer percent
   if   [ "$1" -ge 90 ]; then printf '%s' "$C_BAD"
@@ -42,9 +42,9 @@ grad() {
   fg "$r" "$g" "$b"
 }
 
-# row <label> <pct> [suffix] -> "label  ██████░░░░  42%  suffix"
+# row <label> <pct> [suffix] [width=10] -> "label ━━━━━━━━━━ 42% suffix" (1 cell = 10%)
 row() {
-  local label=$1 pct=$2 suffix=$3 width=16 filled i col out=""
+  local label=$1 pct=$2 suffix=$3 width=${4:-10} filled i col out=""
   printf '%s%-4s%s' "$C_LABEL" "$label" "$RST"
   if [ -z "$pct" ]; then printf '%sn/a%s' "$C_LABEL" "$RST"; return; fi
   pct=$(printf '%.0f' "$pct")
@@ -60,8 +60,8 @@ row() {
       if [ "$i" -lt "$filled" ]; then out+="${col}━"; else out+="${C_TRACK}━"; fi
     done
   fi
-  printf '%s%s %s%s%4s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
-  [ -n "$suffix" ] && printf '   %s%s%s' "$C_LABEL" "$suffix" "$RST"
+  printf '%s%s %s%s%s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
+  [ -n "$suffix" ] && printf ' %s%s%s' "$C_LABEL" "$suffix" "$RST"
 }
 
 rel() {  # epoch -> "2d 5h" / "2h 13m" / "12m"
@@ -72,6 +72,17 @@ rel() {  # epoch -> "2d 5h" / "2h 13m" / "12m"
   if   [ "$d" -gt 0 ]; then printf '%dd %dh' "$d" "$h"
   elif [ "$h" -gt 0 ]; then printf '%dh %dm' "$h" "$m"
   else                      printf '%dm' "$m"; fi
+}
+
+at() {  # epoch -> "14:30" (today) / "Sat 14:30" (other day), local time
+  [ -z "$1" ] && return
+  if [ "$(date -d "@$1" +%Y%m%d)" = "$(date +%Y%m%d)" ]; then date -d "@$1" +%H:%M
+  else date -d "@$1" '+%a %H:%M'; fi
+}
+
+reset_hint() {  # epoch -> "2h 13m (14:30)" / "2d 4h (Sat 14:30)"
+  [ -z "$1" ] && return
+  printf '%s (%s)' "$(rel "$1")" "$(at "$1")"
 }
 
 human() {  # 6123 -> 6k, 1200000 -> 1.2M
@@ -129,8 +140,8 @@ fi
 # ---------- line 1: header ----------
 l1="${C_MODEL}${BOLD}${model}${RST}"
 [ -n "$effort" ] && l1+="${SEP}${C_TEXT}${effort}${RST}"
-l1+="${SEP}${C_BRANCH}⎇ ${branch:-no git}${RST}"
 [ -n "$tps" ] && l1+="${SEP}${C_SPEED}${tps} tok/s${RST}"
+l1+="${SEP}${C_BRANCH}⎇ ${branch:-no git}${RST}"
 if [ "$added" -gt 0 ] || [ "$removed" -gt 0 ]; then
   l1+="${SEP}${C_BLUE}+${added}${RST} ${C_PINK}−${removed}${RST}"
 fi
@@ -143,11 +154,13 @@ ctx_extra=""
 if [ -n "$hit" ]; then
   hp=$(awk -v h="$hit" 'BEGIN{printf "%d", h*100+0.5}')
   if   [ "$hp" -ge 80 ]; then hc=$C_OK; elif [ "$hp" -ge 50 ]; then hc=$C_WARN; else hc=$C_BAD; fi
-  ctx_extra+="   ${RST}${C_LABEL}cache ${hc}${hp}%${RST}"
+  [ -n "$ctx_extra" ] && ctx_extra+="${RST}${SEP}"
+  ctx_extra+="${C_LABEL}cache ${hc}${hp}%${RST}"
   [ "$warm" = "false" ] && ctx_extra+="${C_LABEL} (cold)${RST}"
 fi
 l2=$(row ctx "$ctx" "$ctx_extra")
-l3=$(row 5h  "$h5" "${h5r:+resets in $(rel "$h5r")}")
-l4=$(row 7d  "$d7" "${d7r:+resets in $(rel "$d7r")}")
+# 5h and 7d share one line; every bar (ctx/5h/7d) is 10 cells, 1 cell = 10%
+SEP2="${C_LABEL} | ${RST}"
+l3="$(row 5h "$h5" "$(reset_hint "$h5r")")${SEP2}$(row 7d "$d7" "$(reset_hint "$d7r")")"
 
-printf '%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4"
+printf '%s\n%s\n%s\n' "$l1" "$l2" "$l3"
