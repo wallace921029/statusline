@@ -1,10 +1,11 @@
+
 #!/usr/bin/env bash
 # Antigravity CLI (agy) status line (5 aligned lines, truecolor, trans flag palette):
 #   Gemini 4 Argon | high | 70 tok/s | ⎇ main | +12 -3
-#   ctx       •••••••••• 12% 117k/1.0M | cache 98%
-#   argon 7d  ━━━━━━━━━━ 11% 6d 19h (Wed 14:00)
-#   gem   5h  ━━━━━━━━━━ 0% 4h 57min (18:59) | 7d ━━━━━━━━━━ 0% 6d 0h (Tue 11:14)
-#   3p    5h  ━━━━━━━━━━ 0% 4h 57min (18:59) | 7d ━━━━━━━━━━ 0% 6d 23h (Wed 13:59)
+#   ctx       ••••••••••  12% 117k/1.0M | cache 98%
+#   argon 7d  ━━━━━━━━━━  11% 6d 19h (Wed 14:00)
+#   gem   5h  ━━━━━━━━━━   0% 4h 57min (18:59) | 7d ━━━━━━━━━━   0% 6d  0h (Tue 11:14)
+#   3p    5h  ━━━━━━━━━━   0% 4h 57min (18:59) | 7d ━━━━━━━━━━   0% 6d 23h (Wed 13:59)
 
 export LC_TIME=C
 export LC_NUMERIC=C
@@ -65,16 +66,20 @@ ctx_row() {
     if [ "$i" -lt "$filled" ]; then col=$(grad "$i" "$width"); out+="${col}•"; else out+="${C_TRACK}•"; fi
   done
   col=$(grad $(( filled > 0 ? filled - 1 : 0 )) "$width")
-  printf '%s%s %s%s%s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
+  printf '%s%s %s%s%3s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
   [ -n "$suffix" ] && printf ' %s%s%s' "$C_LABEL" "$suffix" "$RST"
 }
 
-# quota segment: <prefix_label> <used_pct> <rstr> (width=10, 1 cell = 10%)
+# quota segment: <prefix_label> <used_pct> <rstr> [pad_reset] (width=10, 1 cell = 10%)
 quota_seg() {
-  local label=$1 pct=$2 rstr=$3 width=10 filled i col out=""
+  local label=$1 pct=$2 rstr=$3 pad=${4:-0} width=10 filled i col out=""
   printf '%s%s%s' "$C_LABEL" "$label" "$RST"
   if [ -z "$pct" ] || [ "$pct" = "null" ]; then
-    printf '%sn/a%s' "$C_LABEL" "$RST"
+    if [ "$pad" -eq 1 ]; then
+      printf '%s%-32s%s' "$C_LABEL" "n/a" "$RST"
+    else
+      printf '%sn/a%s' "$C_LABEL" "$RST"
+    fi
     return
   fi
   pct=$(LC_NUMERIC=C printf '%.0f' "$pct")
@@ -85,8 +90,12 @@ quota_seg() {
   for ((i=0; i<width; i++)); do
     if [ "$i" -lt "$filled" ]; then out+="${col}━"; else out+="${C_TRACK}━"; fi
   done
-  printf '%s%s %s%s%s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
-  [ -n "$rstr" ] && printf ' %s%s%s' "$C_LABEL" "$rstr" "$RST"
+  printf '%s%s %s%s%3s%%%s' "$out" "$RST" "$col" "$BOLD" "$pct" "$RST"
+  if [ "$pad" -eq 1 ]; then
+    printf ' %s%-16s%s' "$C_LABEL" "$rstr" "$RST"
+  elif [ -n "$rstr" ]; then
+    printf ' %s%s%s' "$C_LABEL" "$rstr" "$RST"
+  fi
 }
 
 # ---------- single-pass jq extraction ----------
@@ -96,6 +105,7 @@ eval "$(
       if b == null or b.remaining_fraction == null then ""
       else ((1 - b.remaining_fraction) * 100 | if . < 0 then 0 elif . > 100 then 100 else . end | tostring)
       end;
+    def p2: tostring | if length < 2 then " " + . else . end;
     def fmt_rst(b; is_7d):
       if b == null then ""
       else
@@ -106,15 +116,12 @@ eval "$(
         elif $s <= 0 then "now"
         else
           ($s / 86400 | floor) as $d |
-          (($s % 86400) / 3600 | floor) as $h |
+          ((if is_7d then ($s % 86400) else $s end) / 3600 | floor) as $h |
           (($s % 3600) / 60 | floor) as $m |
-          (if is_7d then
-             (if $d > 0 then "\($d)d \($h)h" elif $h > 0 then "\($h)h \($m)min" elif $s < 60 then "<1min" else "\($m)min" end) +
-             " (" + ((now + $s) | strflocaltime("%a %H:%M")) + ")"
-           else
-             (if $h > 0 then "\($h)h \($m)min" elif $s < 60 then "<1min" else "\($m)min" end) +
-             " (" + ((now + $s) | strflocaltime("%H:%M")) + ")"
-           end)
+          (if is_7d and $d > 0 then "\($d)d \($h | p2)h"
+           elif $s < 60 then "   <1min"
+           else "\($h)h \($m | p2)min" end) +
+          " (" + ((now + $s) | strflocaltime(if is_7d then "%a %H:%M" else "%H:%M" end)) + ")"
         end
       end;
     (.quota["gemini-argon-wtu-weekly"] // (.quota // {} | to_entries | map(select(.key | test("argon"))) | first | .value)) as $argon |
@@ -241,13 +248,13 @@ l3=$(quota_seg "argon 7d " "$arg7_pct" "$arg7_rst")
 
 # ---------- line 4: gem (5h + 7d) ----------
 l4=$(printf '%s%s%s' \
-  "$(quota_seg "gem   5h " "$gem5_pct" "$gem5_rst")" \
+  "$(quota_seg "gem   5h " "$gem5_pct" "$gem5_rst" 1)" \
   "$SEP" \
   "$(quota_seg "7d " "$gem7_pct" "$gem7_rst")")
 
 # ---------- line 5: 3p (5h + 7d) ----------
 l5=$(printf '%s%s%s' \
-  "$(quota_seg "3p    5h " "$tp5_pct" "$tp5_rst")" \
+  "$(quota_seg "3p    5h " "$tp5_pct" "$tp5_rst" 1)" \
   "$SEP" \
   "$(quota_seg "7d " "$tp7_pct" "$tp7_rst")")
 
