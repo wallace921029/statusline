@@ -1,4 +1,3 @@
-
 #!/usr/bin/env bash
 # Claude Code status line (3 lines, truecolor):
 #   Sonnet 5 | high | 89 tok/s | ⎇ main
@@ -122,11 +121,20 @@ def ts: (.[0:19] + "Z") as $s | ($s | fromdateiso8601) + (if (.|length) > 20 the
 | if ($done|length)==0 then empty else
   ($done | last | .message.id) as $id
   | ($done | map(select(.message.id==$id))) as $blocks
-  | ($all | map(select(.uuid==$blocks[0].parentUuid)) | first) as $parent
-  | ($blocks | last | .timestamp | ts) as $end
-  | ($parent.timestamp | ts) as $start
-  | ($blocks[0].message.usage.output_tokens) as $out
-  | {out:$out, secs:($end-$start), tps:($out/($end-$start))} end
+  # walk up past attachment/system/progress entries (their timestamps can equal or trail the
+  # response, giving 0 or negative duration) to the real trigger: user prompt or tool_result
+  | (reduce range(0;20) as $_ ($all | map(select(.uuid==$blocks[0].parentUuid)) | first;
+      . as $cur
+      | if $cur != null and ($cur.type=="attachment" or $cur.type=="system" or $cur.type=="progress")
+        then ($all | map(select(.uuid==$cur.parentUuid)) | first)
+        else $cur end)) as $parent
+  | if $parent == null then empty else
+    ($blocks | last | .timestamp | ts) as $end
+    | ($parent.timestamp | ts) as $start
+    | ($blocks | last | .message.usage.output_tokens) as $out
+    | ($end - $start) as $secs
+    | if $secs < 0.5 then empty else {out:$out, secs:$secs, tps:($out/$secs)} end
+  end end
 JQEOF
 
 # tps: measured from the session transcript (real timestamps + real output_tokens of the
