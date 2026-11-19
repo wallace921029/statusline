@@ -1,6 +1,5 @@
-
 #!/usr/bin/env bash
-# Antigravity CLI (agy) status line (5 aligned lines, truecolor, trans flag palette):
+# Antigravity CLI (agy) status line (4-5 aligned lines, truecolor, trans flag palette; argon row shown only when separate argon bucket is active):
 #   Gemini 4 Argon | high | 70 tok/s | ⎇ main | +12 -3
 #   ctx       ••••••••••  12% 117k/1.0M | cache 98%
 #   argon 7d  ━━━━━━━━━━  11% 6d 19h (Wed 14:00)
@@ -124,7 +123,8 @@ eval "$(
           " (" + ((now + $s) | strflocaltime(if is_7d then "%a %H:%M" else "%H:%M" end)) + ")"
         end
       end;
-    (.quota["gemini-argon-wtu-weekly"] // (.quota // {} | to_entries | map(select(.key | test("argon"))) | first | .value)) as $argon |
+    def active(b): if b == null or b.disabled == true then null else b end;
+    (active(.quota["gemini-argon-wtu-weekly"]) // (.quota // {} | to_entries | map(select((.key | test("argon")) and (.value.disabled != true))) | first | .value)) as $argon |
     @sh "
       raw_model=\(.model.display_name // "?")
       effort=\(.model.effort // "")
@@ -243,8 +243,11 @@ if [ $(( cur_in + cur_cache )) -gt 0 ]; then
 fi
 l2=$(ctx_row "$ctx" "$ctx_extra")
 
-# ---------- line 3: argon (7d standalone row above gem) ----------
-l3=$(quota_seg "argon 7d " "$arg7_pct" "$arg7_rst")
+# ---------- line 3 (optional): argon (only shown when a separate active argon bucket exists) ----------
+l3=""
+if [ -n "$arg7_pct" ]; then
+  l3=$(quota_seg "argon 7d " "$arg7_pct" "$arg7_rst")
+fi
 
 # ---------- line 4: gem (5h + 7d) ----------
 l4=$(printf '%s%s%s' \
@@ -258,4 +261,6 @@ l5=$(printf '%s%s%s' \
   "$SEP" \
   "$(quota_seg "7d " "$tp7_pct" "$tp7_rst")")
 
-printf '%s\n%s\n%s\n%s\n%s\n' "$l1" "$l2" "$l3" "$l4" "$l5"
+printf '%s\n%s\n' "$l1" "$l2"
+[ -n "$l3" ] && printf '%s\n' "$l3"
+printf '%s\n%s\n' "$l4" "$l5"
